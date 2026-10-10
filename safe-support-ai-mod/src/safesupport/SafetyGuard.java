@@ -1,10 +1,16 @@
 package safesupport;
 
+import arc.math.*;
 import arc.math.geom.*;
 import arc.struct.*;
 import arc.util.*;
 import mindustry.entities.*;
+import mindustry.entities.bullet.*;
+import mindustry.game.*;
 import mindustry.gen.*;
+import mindustry.type.*;
+import mindustry.core.*;
+import mindustry.world.blocks.defense.*;
 import mindustry.world.blocks.defense.turrets.*;
 import mindustry.world.meta.*;
 
@@ -12,6 +18,7 @@ import static mindustry.Vars.*;
 
 /**
  * Detecta enemigos y torretas enemigas cerca de una unidad y los convierte en zonas de peligro.
+ * Tambien decide si un muro propio protege a la unidad de esas amenazas.
  * Cada unidad de soporte tiene su propia instancia.
  */
 public class SafetyGuard{
@@ -26,10 +33,33 @@ public class SafetyGuard{
     /** Cada cuantos ticks se vuelve a escanear. */
     public static float scanInterval = 10f;
 
+    /** Hasta donde busca muros para cubrirse. */
+    public static float coverSearch = 10f * tilesize;
+    /** Distancia entre el borde del muro y la unidad (las balas que explotan al chocar hacen dano en area). */
+    public static float coverGap = 1.5f * tilesize;
+    /** Separacion de las lineas de tiro que se comprueban a cada lado de la unidad. */
+    public static float coverSpread = 4f;
+    /** Cada cuantos ticks se vuelve a buscar un muro. */
+    public static float coverInterval = 30f;
+    /** Cuantos puntos candidatos se comprueban como maximo en cada busqueda. */
+    public static int coverChecks = 16;
+    /** Cuanto mas lejos que la salida de la zona se acepta un muro. */
+    public static float coverDetour = 5f * tilesize;
+
+    private static final int maxCandidates = 256;
+
     private final Zones zones = new Zones();
+    private final FloatSeq threats = new FloatSeq();
     private final float[] tmp = new float[2];
-    private final Vec2 escape = new Vec2(), waypoint = new Vec2();
+    private final Vec2 escape = new Vec2(), waypoint = new Vec2(), cover = new Vec2();
     private float lastScan = -1000f;
+
+    //cobertura
+    private final float[] candidates = new float[maxCandidates * 3];
+    private Team coverTeam = Team.derelict;
+    private final Cover.Walls walls = (x, y) -> isWall(world.build(x, y), coverTeam);
+    private boolean hasCover, coveredCache;
+    private float lastCoverSearch = -1000f, coveredStamp = -1f;
 
     /** Reescanea las amenazas si ya toca. Es barato llamarlo en cada frame. */
     public void update(Unit unit){
@@ -38,6 +68,7 @@ public class SafetyGuard{
         lastScan = now;
 
         zones.clear();
+        threats.clear();
         final boolean air = unit.isFlying();
 
         //unidades enemigas que pueden dispararle a esta unidad
@@ -46,7 +77,9 @@ public class SafetyGuard{
             if(air ? !e.type.targetAir : !e.type.targetGround) return;
 
             float range = e.type.maxRange > 0f ? e.type.maxRange : Math.max(e.type.range, 0f);
-            zones.add(e.x, e.y, Math.max(minUnitDanger, range) + unitPad);
+            float radius = Math.max(minUnitDanger, range) + unitPad;
+            zones.add(e.x, e.y, radius);
+            addThreat(e.x, e.y, radius, unitBlockable(e.type, air));
         });
 
         //torretas enemigas con municion que pueden alcanzarla
@@ -66,8 +99,19 @@ public class SafetyGuard{
             if(air ? !t.targetAir : !t.targetGround) continue;
             if(!tb.hasAmmo()) continue;
 
-            zones.add(b.x, b.y, tb.range() + turretPad);
+            float radius = tb.range() + turretPad;
+            zones.add(b.x, b.y, radius);
+            addThreat(b.x, b.y, radius, bulletBlockable(tb.peekAmmo()));
         }
+
+        coveredStamp = -1f;
+    }
+
+    private void addThreat(float x, float y, float radius, boolean blockable){
+        threats.add(x);
+        threats.add(y);
+        threats.add(radius);
+        threats.add(blockable ? 1f : 0f);
     }
 
     /** @return true si hay alguna amenaza detectada cerca. */
@@ -90,5 +134,108 @@ public class SafetyGuard{
     public @Nullable Vec2 waypoint(Unit unit, Position target){
         if(!zones.waypoint(unit.x, unit.y, target.getX(), target.getY(), tmp)) return null;
         return waypoint.set(tmp[0], tmp[1]);
+    }
+
+    /** @return true si un muro propio frena a todas las amenazas que alcanzan a la unidad en su posicion actual. */
+    public boolean covered(Unit unit){
+        if(coveredStamp != lastScan){
+            coverTeam = unit.team;
+            coveredCache = Cover.covered(threats.items, threats.size / Cover.STRIDE, walls, unit.x, unit.y, coverSpread, tilesize);
+            coveredStamp = lastScan;
+        }
+        return coveredCache;
+    }
+
+    /** @return un punto protegido por un muro cercano; null si no hay ninguno. Se recalcula cada coverInterval ticks. */
+    public @Nullable Vec2 coverPoint(Unit unit){
+        float now = Time.time;
+        if(now >= lastCoverSearch && now - lastCoverSearch < coverInterval) return hasCover ? cover : null;
+
+        lastCoverSearch = now;
+        hasCover = false;
+        coverTeam = unit.team;
+
+        int cx = World.toTile(unit.x), cy = World.toTile(unit.y), r = (int)(coverSearch / tilesize);
+        float maxX = world.unitWidth(), maxY = world.unitHeight();
+        int n = 0;
+
+        //un candidato por muro: justo detras de el, visto desde la amenaza mas cercana a ese muro
+        for(int x = cx - r; x <= cx + r && n < maxCandidates; x++){
+            for(int y = cy - r; y <= cy + r && n < maxCandidates; y++){
+                Building b = world.build(x, y);
+                if(!isWall(b, coverTeam) || b.tile.x != x || b.tile.y != y) continue;
+
+                int near = nearestThreat(b.x, b.y);
+                if(near < 0) continue;
+
+                int k = near * Cover.STRIDE;
+                if(!Cover.spot(b.x, b.y, b.block.size * tilesize / 2f, threats.items[k], threats.items[k + 1], coverGap, tmp)) continue;
+                if(tmp[0] < 0f || tmp[1] < 0f || tmp[0] > maxX || tmp[1] > maxY) continue;
+
+                candidates[n * 3] = tmp[0];
+                candidates[n * 3 + 1] = tmp[1];
+                candidates[n * 3 + 2] = Mathf.dst2(tmp[0], tmp[1], unit.x, unit.y);
+                n++;
+            }
+        }
+
+        //el mas cercano a la unidad que de verdad quede cubierto
+        for(int checks = 0; checks < coverChecks; checks++){
+            int best = -1;
+            for(int i = 0; i < n; i++){
+                if(candidates[i * 3 + 2] >= 0f && (best < 0 || candidates[i * 3 + 2] < candidates[best * 3 + 2])) best = i;
+            }
+            if(best < 0) break;
+
+            float px = candidates[best * 3], py = candidates[best * 3 + 1];
+            candidates[best * 3 + 2] = -1f;
+
+            if(Cover.covered(threats.items, threats.size / Cover.STRIDE, walls, px, py, coverSpread, tilesize)){
+                cover.set(px, py);
+                hasCover = true;
+                return cover;
+            }
+        }
+
+        return null;
+    }
+
+    /** @return indice de la amenaza mas cercana al punto que lo alcanza, o -1. */
+    private int nearestThreat(float x, float y){
+        int best = -1;
+        float bestDst = Float.MAX_VALUE;
+        for(int i = 0; i < threats.size / Cover.STRIDE; i++){
+            int k = i * Cover.STRIDE;
+            float dst = Mathf.dst2(x, y, threats.items[k], threats.items[k + 1]);
+            float r = threats.items[k + 2];
+            if(dst <= r * r && dst < bestDst){
+                best = i;
+                bestDst = dst;
+            }
+        }
+        return best;
+    }
+
+    /** Muro propio que frena balas: de la categoria muros, sin puertas ni bloques que las balas sobrevuelan. */
+    static boolean isWall(@Nullable Building b, Team team){
+        return b != null && b.team == team && b.isValid()
+            && b.block.group == BlockGroup.walls && !b.block.underBullets && !(b.block instanceof Door);
+    }
+
+    /** Una bala la frena un muro si choca con edificios; los laseres y la metralla antiaerea pasan de largo. */
+    static boolean bulletBlockable(@Nullable BulletType b){
+        return b != null && b.collides && b.collidesTiles && b.collidesGround && !b.pierceBuilding;
+    }
+
+    /** @return true si todas las armas de la unidad que pueden herir a la unidad objetivo disparan balas bloqueables. */
+    static boolean unitBlockable(UnitType type, boolean targetIsAir){
+        boolean any = false;
+        for(Weapon w : type.weapons){
+            BulletType b = w.bullet;
+            if(b == null || (targetIsAir ? !b.collidesAir : !b.collidesGround)) continue;
+            if(!bulletBlockable(b)) return false;
+            any = true;
+        }
+        return any;
     }
 }

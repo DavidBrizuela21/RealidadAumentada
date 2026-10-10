@@ -1,5 +1,6 @@
 package safesupport;
 
+import arc.math.*;
 import arc.math.geom.*;
 import arc.util.*;
 import mindustry.ai.*;
@@ -27,13 +28,19 @@ public class SafeBuilderAI extends BuilderAI{
 
         boolean hold = hasStance(UnitStance.holdPosition);
 
-        //dentro de una zona de peligro: dejar de construir y salir
+        //dentro de una zona de peligro: dejar de construir y cubrirse tras un muro si hay uno, si no salir
         Vec2 esc = guard.escapePoint(unit);
         if(esc != null && !hold){
             unit.clearBuilding();
             following = null;
             lastPlan = null;
-            rawMoveTo(esc, waypointReach);
+
+            //protegida por un muro: se queda quieta y retoma el trabajo cuando se despeje
+            if(guard.covered(unit)) return;
+
+            Vec2 cp = guard.coverPoint(unit);
+            Vec2 dest = cp != null && Mathf.dst(unit.x, unit.y, cp.x, cp.y) <= Mathf.dst(unit.x, unit.y, esc.x, esc.y) + SafetyGuard.coverDetour ? cp : esc;
+            rawMoveTo(dest, waypointReach);
             return;
         }
 

@@ -1,5 +1,6 @@
 package safesupport;
 
+import arc.math.*;
 import arc.math.geom.*;
 import arc.util.*;
 import mindustry.ai.*;
@@ -25,6 +26,8 @@ public class SafeRepairAI extends AIController{
     float retreatTimer;
     Building damagedTarget;
     private boolean steering;
+    /** Esta protegida por un muro: se queda quieta y solo cura lo que alcanza. */
+    private boolean inCover;
 
     @Override
     public void updateMovement(){
@@ -32,14 +35,25 @@ public class SafeRepairAI extends AIController{
 
         boolean hold = hasStance(UnitStance.holdPosition);
 
-        //dentro de una zona de peligro: salir de inmediato y olvidar el objetivo
+        //dentro de una zona de peligro: cubrirse tras un muro si hay uno, si no salir de inmediato
         Vec2 esc = guard.escapePoint(unit);
+        inCover = false;
         if(esc != null && !hold){
+            retreatTimer = 0f;
+
+            if(guard.covered(unit)){
+                inCover = true;
+                holdInCover();
+                return;
+            }
+
+            Vec2 cp = guard.coverPoint(unit);
+            Vec2 dest = cp != null && Mathf.dst(unit.x, unit.y, cp.x, cp.y) <= Mathf.dst(unit.x, unit.y, esc.x, esc.y) + SafetyGuard.coverDetour ? cp : esc;
+
             unit.controlWeapons(false);
             damagedTarget = null;
             target = null;
-            retreatTimer = 0f;
-            rawMoveTo(esc, waypointReach);
+            rawMoveTo(dest, waypointReach);
             return;
         }
 
@@ -101,7 +115,7 @@ public class SafeRepairAI extends AIController{
         guard.update(unit);
 
         if(timer.get(timerTarget, 15)){
-            damagedTarget = findSafeDamaged();
+            damagedTarget = inCover ? findDamagedInRange(unit.type.range * 0.9f) : findSafeDamaged();
         }
 
         if(damagedTarget != null && !damagedTarget.isValid()) damagedTarget = null;
@@ -111,6 +125,37 @@ public class SafeRepairAI extends AIController{
         }else{
             this.target = damagedTarget;
         }
+    }
+
+    /** Protegida por un muro: no se mueve, apunta al bloque danado mas cercano que alcanza y lo cura. */
+    private void holdInCover(){
+        if(target instanceof Building b && b.team == unit.team && target.within(unit, unit.type.range)){
+            unit.aim(target);
+            unit.lookAt(target);
+            unit.controlWeapons(true);
+        }else{
+            unit.controlWeapons(false);
+        }
+    }
+
+    /** El bloque danado mas cercano dentro del alcance, aunque este en una zona de peligro (la unidad no se mueve). */
+    private @Nullable Building findDamagedInRange(float range){
+        var list = indexer.getDamaged(unit.team);
+        Building best = null;
+        float bestDst = range * range;
+
+        for(int i = 0; i < list.size; i++){
+            Building b = list.get(i);
+            if(b == null || !b.isValid() || b instanceof ConstructBuild) continue;
+
+            float dst = b.dst2(unit.x, unit.y);
+            if(dst >= bestDst) continue;
+
+            best = b;
+            bestDst = dst;
+        }
+
+        return best;
     }
 
     /** El bloque danado mas cercano que no esta en una zona de peligro. */

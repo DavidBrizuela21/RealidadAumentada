@@ -10,8 +10,11 @@ Mejora la IA de las unidades de soporte de Serpulo (mono, poly, mega).
 | Esperan a estar ociosas para huir | Si entran en una zona de peligro, salen de inmediato y sueltan el objetivo |
 | Atraviesan torretas enemigas al volar a minar o a reparar | Rodean las zonas de peligro en vez de cruzarlas |
 | El mono vuela a minar donde hay enemigos | Si la veta está en una zona de peligro espera junto al núcleo. Al volver a soltar la carga también rodea |
+| Huir siempre aunque haya un muro que proteja | **Poly y mega** se cubren detrás de un muro propio (categoría muros: cobre, titanio, etc.) en vez de huir. El mega se queda quieto y cura lo que alcanza; el poly se queda quieto sin construir |
 
 **Zona de peligro** = alcance de cada unidad enemiga que pueda disparar a la unidad (aérea o terrestre según el caso) + 4 casillas, y alcance de cada torreta enemiga con munición que pueda alcanzarla + 3 casillas.
+
+**Cobertura.** Una unidad dentro de una zona de peligro se considera cubierta si, desde *cada* amenaza que la alcanza, hay un muro propio en la línea de tiro (se comprueban tres líneas paralelas para cubrir el ancho de la unidad) y las balas de esa amenaza las frena un muro. No cuentan como cubierta las amenazas con láseres, rayos continuos, balas perforantes o metralla antiaérea (Scatter), que atraviesan muros. Si no hay cobertura, busca el muro más cercano (hasta 10 casillas) y se pone 1,5 casillas detrás; si no hay ninguno, huye como antes. Puertas y bloques que las balas sobrevuelan (cintas, puentes, conductos) no cuentan como muro.
 
 Se aplica a los comandos de siempre (reparar, reconstruir, asistir, minar), así que los menús, atajos y partidas guardadas no cambian. Respeta la postura "mantener posición".
 
@@ -23,6 +26,7 @@ src/safesupport/
   SafeSupportMod.java   reemplaza la IA de los 4 comandos al cargar
   SafetyGuard.java      detecta enemigos y torretas, arma las zonas de peligro
   Zones.java            geometría: rodear, esperar en el borde, escapar (sin dependencias, probada)
+  Cover.java            geometría de cobertura: líneas de tiro y muros (sin dependencias, probada)
   SafeRepairAI.java     mega
   SafeBuilderAI.java    poly
   SafeMinerAI.java      mono
@@ -50,6 +54,10 @@ En `SafetyGuard.java` (valores en unidades de mundo; 1 casilla = 8):
 | `turretPad` | 3 casillas | Margen extra sobre el alcance de una torreta |
 | `minUnitDanger` | 6 casillas | Radio mínimo de peligro de una unidad enemiga |
 | `scanInterval` | 10 ticks | Cada cuánto reescanea |
+| `coverSearch` | 10 casillas | Hasta dónde busca un muro para cubrirse |
+| `coverGap` | 1,5 casillas | Distancia entre el borde del muro y la unidad (las balas que explotan hacen daño en área) |
+| `coverInterval` | 30 ticks | Cada cuánto repite la búsqueda de muro |
+| `coverDetour` | 5 casillas | Cuánto más lejos que la salida de la zona se acepta un muro |
 
 ## Verificación realizada
 
@@ -61,5 +69,8 @@ En `SafetyGuard.java` (valores en unidades de mundo; 1 casilla = 8):
 
 - Solo esquiva amenazas; no coordina qué unidad repara qué bloque.
 - El mega y el poly vuelan hasta el borde de la zona y esperan ahí: si hay combate constante cerca de un bloque dañado, no se repara hasta que termine.
+- Detrás de un muro el mega cura lo que alcanza, pero su proyectil curativo choca con el primer edificio propio que encuentra: cura sobre todo al propio muro y a lo pegado a él. El poly no tiene curación automática de bloques en el juego, así que solo espera sin reconstruir.
+- Una amenaza cuyo tipo de bala no se puede determinar se trata como que atraviesa muros (no hay cobertura).
+- La cobertura no se probó en una partida real: la geometría tiene pruebas, el comportamiento en el juego hay que verlo.
 - Los comandos son globales: también afectan a otras unidades que usen reparar/reconstruir/asistir/minar (por ejemplo en Erekir).
 - Escrito contra el código fuente actual del juego (v8, build 15x/16x). Una actualización con cambios en `UnitCommand` o `AIController` puede requerir ajustes.
