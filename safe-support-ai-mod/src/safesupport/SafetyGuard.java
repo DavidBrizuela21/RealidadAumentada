@@ -1,5 +1,8 @@
 package safesupport;
 
+import arc.*;
+import arc.graphics.*;
+import arc.graphics.g2d.*;
 import arc.math.*;
 import arc.math.geom.*;
 import arc.struct.*;
@@ -8,6 +11,7 @@ import mindustry.entities.*;
 import mindustry.entities.bullet.*;
 import mindustry.game.*;
 import mindustry.gen.*;
+import mindustry.graphics.*;
 import mindustry.type.*;
 import mindustry.core.*;
 import mindustry.world.blocks.defense.*;
@@ -46,7 +50,15 @@ public class SafetyGuard{
     /** Cuanto mas lejos que la salida de la zona se acepta un muro. */
     public static float coverDetour = 5f * tilesize;
 
+    /** Hasta donde busca el mono una veta alternativa, medido desde el nucleo. */
+    public static float oreSearch = 40f * tilesize;
+    /** Muestra las zonas y la cobertura sobre el mapa. */
+    public static boolean debug;
+
     private static final int maxCandidates = 256;
+    private static final int maxDebugGuards = 8;
+    private static final Seq<SafetyGuard> tracked = new Seq<>();
+    private static float lastSettingsRead = -1000f;
 
     private final Zones zones = new Zones();
     private final FloatSeq threats = new FloatSeq();
@@ -61,11 +73,22 @@ public class SafetyGuard{
     private boolean hasCover, coveredCache;
     private float lastCoverSearch = -1000f, coveredStamp = -1f;
 
+    //diagnostico
+    private Unit owner;
+    private boolean isTracked;
+
     /** Reescanea las amenazas si ya toca. Es barato llamarlo en cada frame. */
     public void update(Unit unit){
         float now = Time.time;
         if(now >= lastScan && now - lastScan < scanInterval) return;
         lastScan = now;
+
+        readSettings();
+        owner = unit;
+        if(debug && !isTracked){
+            isTracked = true;
+            tracked.add(this);
+        }
 
         zones.clear();
         threats.clear();
@@ -214,6 +237,77 @@ public class SafetyGuard{
             }
         }
         return best;
+    }
+
+    /** Lee los ajustes del juego (como mucho una vez por segundo para todas las unidades). */
+    static void readSettings(){
+        float now = Time.time;
+        if(now >= lastSettingsRead && now - lastSettingsRead < 60f) return;
+        lastSettingsRead = now;
+
+        var s = Core.settings;
+        scanRadius = s.getInt("ss-scan", 80) * tilesize;
+        unitPad = s.getInt("ss-unitpad", 4) * tilesize;
+        turretPad = s.getInt("ss-turretpad", 3) * tilesize;
+        minUnitDanger = s.getInt("ss-minunit", 6) * tilesize;
+        coverSearch = s.getInt("ss-coversearch", 10) * tilesize;
+        coverGap = s.getInt("ss-covergap", 15) / 10f * tilesize;
+        oreSearch = s.getInt("ss-oresearch", 40) * tilesize;
+        debug = s.getBool("ss-debug", false);
+    }
+
+    /**
+     * Dibuja las zonas de peligro de las unidades seleccionadas (o de las primeras si no hay seleccion):
+     * naranja = la amenaza la frena un muro, rojo = atraviesa muros; anillo verde = unidad cubierta,
+     * anillo rojo = expuesta; punto y linea verdes = muro elegido para cubrirse.
+     */
+    static void drawDebug(){
+        if(!debug || tracked.isEmpty()) return;
+
+        for(int i = tracked.size - 1; i >= 0; i--){
+            SafetyGuard g = tracked.get(i);
+            //sin escaneos recientes: la unidad cambio de IA o murio
+            if(g.owner == null || !g.owner.isValid() || Time.time - g.lastScan > 120f){
+                g.isTracked = false;
+                tracked.remove(i);
+            }
+        }
+
+        Seq<Unit> selected = control != null && control.input != null ? control.input.selectedUnits : null;
+        boolean filter = selected != null && selected.size > 0;
+
+        Draw.z(Layer.overlayUI);
+        int drawn = 0;
+        for(int i = 0; i < tracked.size && drawn < maxDebugGuards; i++){
+            SafetyGuard g = tracked.get(i);
+            if(filter && !selected.contains(g.owner)) continue;
+            g.drawZones();
+            drawn++;
+        }
+        Draw.reset();
+    }
+
+    private void drawZones(){
+        Lines.stroke(1.5f);
+        for(int i = 0; i < threats.size / Cover.STRIDE; i++){
+            int k = i * Cover.STRIDE;
+            Draw.color(threats.items[k + 3] > 0f ? Color.orange : Color.scarlet, 0.9f);
+            Lines.circle(threats.items[k], threats.items[k + 1], threats.items[k + 2]);
+            Fill.circle(threats.items[k], threats.items[k + 1], 3f);
+        }
+
+        if(zones.dangerAt(owner.x, owner.y, 0f)){
+            Draw.color(covered(owner) ? Color.green : Color.red, 0.9f);
+            Lines.stroke(2f);
+            Lines.circle(owner.x, owner.y, owner.hitSize / 2f + 4f);
+
+            if(hasCover){
+                Draw.color(Color.green, 0.9f);
+                Lines.stroke(1f);
+                Lines.line(owner.x, owner.y, cover.x, cover.y);
+                Fill.circle(cover.x, cover.y, 3f);
+            }
+        }
     }
 
     /** Muro propio que frena balas: de la categoria muros, sin puertas ni bloques que las balas sobrevuelan. */

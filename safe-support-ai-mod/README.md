@@ -9,7 +9,7 @@ Mejora la IA de las unidades de soporte de Serpulo (mono, poly, mega).
 | Van a reparar/reconstruir aunque haya un enemigo o torreta enemiga al lado | Ignoran los bloques dañados y los planes de construcción que estén en una zona de peligro. Los retoman cuando se despeja |
 | Esperan a estar ociosas para huir | Si entran en una zona de peligro, salen de inmediato y sueltan el objetivo |
 | Atraviesan torretas enemigas al volar a minar o a reparar | Rodean las zonas de peligro en vez de cruzarlas |
-| El mono vuela a minar donde hay enemigos | Si la veta está en una zona de peligro espera junto al núcleo. Al volver a soltar la carga también rodea |
+| El mono vuela a minar donde hay enemigos | Si la veta está en una zona de peligro, busca otra veta segura del mismo mineral (hasta 40 casillas del núcleo); si no hay ninguna, espera junto al núcleo. Al volver a soltar la carga también rodea |
 | Huir siempre aunque haya un muro que proteja | **Poly y mega** se cubren detrás de un muro propio (categoría muros: cobre, titanio, etc.) en vez de huir. El mega se queda quieto y cura lo que alcanza; el poly se queda quieto sin construir |
 
 **Zona de peligro** = alcance de cada unidad enemiga que pueda disparar a la unidad (aérea o terrestre según el caso) + 4 casillas, y alcance de cada torreta enemiga con munición que pueda alcanzarla + 3 casillas.
@@ -45,19 +45,32 @@ Mindustry → **Mods** → **Import Mod** → elige el `.jar`. Reinicia el juego
 
 ## Ajustes
 
-En `SafetyGuard.java` (valores en unidades de mundo; 1 casilla = 8):
+En el juego: **Configuración → Safe Support AI**. Los cambios se aplican en un segundo, sin reiniciar.
 
-| Constante | Valor | Efecto |
+| Ajuste | Por defecto | Efecto |
 |---|---|---|
-| `scanRadius` | 80 casillas | Hasta dónde busca amenazas |
-| `unitPad` | 4 casillas | Margen extra sobre el alcance de un enemigo |
-| `turretPad` | 3 casillas | Margen extra sobre el alcance de una torreta |
-| `minUnitDanger` | 6 casillas | Radio mínimo de peligro de una unidad enemiga |
-| `scanInterval` | 10 ticks | Cada cuánto reescanea |
-| `coverSearch` | 10 casillas | Hasta dónde busca un muro para cubrirse |
-| `coverGap` | 1,5 casillas | Distancia entre el borde del muro y la unidad (las balas que explotan hacen daño en área) |
-| `coverInterval` | 30 ticks | Cada cuánto repite la búsqueda de muro |
-| `coverDetour` | 5 casillas | Cuánto más lejos que la salida de la zona se acepta un muro |
+| Radio de búsqueda de amenazas | 80 casillas | Hasta dónde busca enemigos y torretas |
+| Margen sobre el alcance de enemigos | 4 casillas | Se suma al alcance de una unidad enemiga |
+| Margen sobre el alcance de torretas | 3 casillas | Se suma al alcance de una torreta enemiga |
+| Peligro mínimo de un enemigo | 6 casillas | Radio mínimo de peligro, aunque su alcance sea corto |
+| Búsqueda de muros para cubrirse | 10 casillas | Hasta dónde busca un muro propio (poly y mega) |
+| Distancia detrás del muro | 1,5 casillas | Entre el borde del muro y la unidad (las balas que explotan hacen daño en área) |
+| Búsqueda de veta alternativa | 40 casillas | Hasta dónde busca el mono otra veta, desde el núcleo |
+| Mostrar zonas de peligro | apagado | Modo diagnóstico (abajo) |
+
+Las constantes `scanInterval`, `coverInterval`, `coverChecks`, `coverSpread` y `coverDetour` siguen en `SafetyGuard.java`.
+
+### Modo diagnóstico
+
+Con **Mostrar zonas de peligro** activado se dibuja sobre el mapa, para las unidades seleccionadas (o las primeras 8 si no hay ninguna seleccionada):
+
+- **Círculo naranja:** amenaza cuyas balas frena un muro.
+- **Círculo rojo:** amenaza que atraviesa muros (láser, metralla antiaérea, balas perforantes) o de la que no se pudo saber.
+- **Anillo verde en la unidad:** está dentro de una zona pero cubierta por un muro.
+- **Anillo rojo en la unidad:** está dentro de una zona y expuesta.
+- **Punto y línea verdes:** muro elegido para cubrirse.
+
+Si una torreta no aparece dibujada, el mod no la ve como amenaza (sin munición, no puede apuntar a la unidad, o es de tu equipo).
 
 ## Verificación realizada
 
@@ -72,5 +85,5 @@ En `SafetyGuard.java` (valores en unidades de mundo; 1 casilla = 8):
 - Detrás de un muro el mega cura lo que alcanza, pero su proyectil curativo choca con el primer edificio propio que encuentra: cura sobre todo al propio muro y a lo pegado a él. El poly no tiene curación automática de bloques en el juego, así que solo espera sin reconstruir.
 - Una amenaza cuyo tipo de bala no se puede determinar se trata como que atraviesa muros (no hay cobertura).
 - La cobertura no se probó en una partida real: la geometría tiene pruebas, el comportamiento en el juego hay que verlo.
-- Los comandos son globales: también afectan a otras unidades que usen reparar/reconstruir/asistir/minar (por ejemplo en Erekir).
+- Los comandos (reparar, reconstruir, asistir, minar) son globales, pero la IA segura solo se asigna a mono, poly y mega. Cualquier otra unidad que use esos comandos (por ejemplo las de Erekir) conserva la IA original del juego.
 - Escrito contra el código fuente actual del juego (v8, build 15x/16x). Una actualización con cambios en `UnitCommand` o `AIController` puede requerir ajustes.
