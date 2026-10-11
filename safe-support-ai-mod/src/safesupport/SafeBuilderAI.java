@@ -6,6 +6,7 @@ import arc.util.*;
 import mindustry.ai.*;
 import mindustry.ai.types.*;
 import mindustry.entities.units.*;
+import mindustry.gen.*;
 
 import static mindustry.Vars.*;
 
@@ -21,6 +22,8 @@ public class SafeBuilderAI extends BuilderAI{
 
     protected final SafetyGuard guard = new SafetyGuard();
     private boolean steering;
+    private Building healTarget;
+    private float healTimer;
 
     @Override
     public void updateMovement(){
@@ -35,8 +38,11 @@ public class SafeBuilderAI extends BuilderAI{
             following = null;
             lastPlan = null;
 
-            //protegida por un muro: se queda quieta y retoma el trabajo cuando se despeje
-            if(guard.covered(unit)) return;
+            //protegida por un muro: se queda quieta, cura lo que alcanza y retoma el trabajo cuando se despeje
+            if(guard.covered(unit)){
+                healFromCover();
+                return;
+            }
 
             Vec2 cp = guard.coverPoint(unit);
             Vec2 dest = cp != null && Mathf.dst(unit.x, unit.y, cp.x, cp.y) <= Mathf.dst(unit.x, unit.y, esc.x, esc.y) + SafetyGuard.coverDetour ? cp : esc;
@@ -53,6 +59,22 @@ public class SafeBuilderAI extends BuilderAI{
         }
 
         super.updateMovement();
+    }
+
+    /** Sus misiles curan bloques propios (healPercent), pero la IA solo apunta a enemigos: desde cobertura apunta al bloque danado mas cercano. */
+    private void healFromCover(){
+        if((healTimer += Time.delta) >= 15f || (healTarget != null && !healTarget.isValid())){
+            healTimer = 0f;
+            healTarget = SafetyGuard.damagedNear(unit, unit.type.range * 0.9f);
+        }
+
+        if(healTarget != null && healTarget.isValid() && healTarget.within(unit, unit.type.range)){
+            unit.aim(healTarget);
+            unit.lookAt(healTarget);
+            unit.controlWeapons(true);
+        }else{
+            unit.controlWeapons(false);
+        }
     }
 
     /** Mueve a la unidad sin aplicar la esquiva (para huir o ir a un punto intermedio). */

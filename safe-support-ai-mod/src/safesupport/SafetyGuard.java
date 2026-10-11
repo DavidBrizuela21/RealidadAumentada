@@ -14,6 +14,7 @@ import mindustry.gen.*;
 import mindustry.graphics.*;
 import mindustry.type.*;
 import mindustry.core.*;
+import mindustry.world.blocks.ConstructBlock.*;
 import mindustry.world.blocks.defense.*;
 import mindustry.world.blocks.defense.turrets.*;
 import mindustry.world.meta.*;
@@ -72,6 +73,11 @@ public class SafetyGuard{
     private final Cover.Walls walls = (x, y) -> isWall(world.build(x, y), coverTeam);
     private boolean hasCover, coveredCache;
     private float lastCoverSearch = -1000f, coveredStamp = -1f;
+
+    //cobertura cerca de un bloque danado (para curarlo desde detras de un muro)
+    private final Vec2 nearCover = new Vec2();
+    private boolean hasNear;
+    private float lastNearSearch = -1000f, nearAx, nearAy;
 
     //diagnostico
     private Unit owner;
@@ -175,10 +181,36 @@ public class SafetyGuard{
         if(now >= lastCoverSearch && now - lastCoverSearch < coverInterval) return hasCover ? cover : null;
 
         lastCoverSearch = now;
-        hasCover = false;
+        hasCover = searchCover(unit, unit.x, unit.y, -1f, cover);
+        return hasCover ? cover : null;
+    }
+
+    /**
+     * @return un punto protegido por un muro a menos de range del punto (ax, ay), por ejemplo para curar desde ahi un
+     * bloque danado que esta en una zona de peligro; null si no hay ninguno. Se recalcula cada coverInterval ticks
+     * mientras el punto no cambie.
+     */
+    public @Nullable Vec2 coverNear(Unit unit, float ax, float ay, float range){
+        float now = Time.time;
+        boolean same = Mathf.dst(ax, ay, nearAx, nearAy) < tilesize;
+        if(same && now >= lastNearSearch && now - lastNearSearch < coverInterval) return hasNear ? nearCover : null;
+
+        lastNearSearch = now;
+        nearAx = ax;
+        nearAy = ay;
+        hasNear = searchCover(unit, ax, ay, range, nearCover);
+        return hasNear ? nearCover : null;
+    }
+
+    /**
+     * Busca muros alrededor de (ax, ay) y escribe en out el punto cubierto mas cercano a la unidad.
+     * Con anchorRange > 0 solo acepta puntos a menos de esa distancia de (ax, ay).
+     */
+    private boolean searchCover(Unit unit, float ax, float ay, float anchorRange, Vec2 out){
         coverTeam = unit.team;
 
-        int cx = World.toTile(unit.x), cy = World.toTile(unit.y), r = (int)(coverSearch / tilesize);
+        boolean anchored = anchorRange > 0f;
+        int cx = World.toTile(ax), cy = World.toTile(ay), r = (int)((anchored ? anchorRange : coverSearch) / tilesize) + (anchored ? 1 : 0);
         float maxX = world.unitWidth(), maxY = world.unitHeight();
         int n = 0;
 
@@ -194,6 +226,7 @@ public class SafetyGuard{
                 int k = near * Cover.STRIDE;
                 if(!Cover.spot(b.x, b.y, b.block.size * tilesize / 2f, threats.items[k], threats.items[k + 1], coverGap, tmp)) continue;
                 if(tmp[0] < 0f || tmp[1] < 0f || tmp[0] > maxX || tmp[1] > maxY) continue;
+                if(anchored && Mathf.dst2(tmp[0], tmp[1], ax, ay) > anchorRange * anchorRange) continue;
 
                 candidates[n * 3] = tmp[0];
                 candidates[n * 3 + 1] = tmp[1];
@@ -214,13 +247,32 @@ public class SafetyGuard{
             candidates[best * 3 + 2] = -1f;
 
             if(Cover.covered(threats.items, threats.size / Cover.STRIDE, walls, px, py, coverSpread, tilesize)){
-                cover.set(px, py);
-                hasCover = true;
-                return cover;
+                out.set(px, py);
+                return true;
             }
         }
 
-        return null;
+        return false;
+    }
+
+    /** El bloque propio danado mas cercano a la unidad dentro de range (aunque este en una zona de peligro). */
+    static @Nullable Building damagedNear(Unit unit, float range){
+        var list = indexer.getDamaged(unit.team);
+        Building best = null;
+        float bestDst = range * range;
+
+        for(int i = 0; i < list.size; i++){
+            Building b = list.get(i);
+            if(b == null || !b.isValid() || b instanceof ConstructBuild) continue;
+
+            float dst = b.dst2(unit.x, unit.y);
+            if(dst >= bestDst) continue;
+
+            best = b;
+            bestDst = dst;
+        }
+
+        return best;
     }
 
     /** @return indice de la amenaza mas cercana al punto que lo alcanza, o -1. */

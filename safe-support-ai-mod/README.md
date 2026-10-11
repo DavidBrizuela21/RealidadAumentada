@@ -10,11 +10,13 @@ Mejora la IA de las unidades de soporte de Serpulo (mono, poly, mega).
 | Esperan a estar ociosas para huir | Si entran en una zona de peligro, salen de inmediato y sueltan el objetivo |
 | Atraviesan torretas enemigas al volar a minar o a reparar | Rodean las zonas de peligro en vez de cruzarlas |
 | El mono vuela a minar donde hay enemigos | Si la veta está en una zona de peligro, busca otra veta segura del mismo mineral (hasta 40 casillas del núcleo); si no hay ninguna, espera junto al núcleo. Al volver a soltar la carga también rodea |
-| Huir siempre aunque haya un muro que proteja | **Poly y mega** se cubren detrás de un muro propio (categoría muros: cobre, titanio, etc.) en vez de huir. El mega se queda quieto y cura lo que alcanza; el poly se queda quieto sin construir |
+| Huir siempre aunque haya un muro que proteja | **Poly y mega** se cubren detrás de un muro propio (categoría muros: cobre, titanio, etc.) en vez de huir. El mega se queda quieto y cura lo que alcanza; el poly se queda quieto sin construir y apunta sus misiles curativos al bloque dañado más cercano |
 
 **Zona de peligro** = alcance de cada unidad enemiga que pueda disparar a la unidad (aérea o terrestre según el caso) + 4 casillas, y alcance de cada torreta enemiga con munición que pueda alcanzarla + 3 casillas.
 
 **Cobertura.** Una unidad dentro de una zona de peligro se considera cubierta si, desde *cada* amenaza que la alcanza, hay un muro propio en la línea de tiro (se comprueban tres líneas paralelas para cubrir el ancho de la unidad) y las balas de esa amenaza las frena un muro. No cuentan como cubierta las amenazas con láseres, rayos continuos, balas perforantes o metralla antiaérea (Scatter), que atraviesan muros. Si no hay cobertura, busca el muro más cercano (hasta 10 casillas) y se pone 1,5 casillas detrás; si no hay ninguno, huye como antes. Puertas y bloques que las balas sobrevuelan (cintas, puentes, conductos) no cuentan como muro.
+
+**Curar desde cobertura.** El mega, si no tiene nada seguro que reparar pero hay un bloque dañado dentro de una zona de peligro (por ejemplo, el propio muro que están bombardeando), se acerca a un punto cubierto a menos del 80 % de su alcance de ese bloque y lo cura desde ahí. Si el bloque ya está al alcance desde fuera de la zona, lo cura sin moverse. Solo lo hace con más de la mitad de su vida y si el punto cubierto está a menos de la distancia de búsqueda de muros. Las reparaciones seguras siguen teniendo prioridad. Ya cubierto, si no alcanza nada, se recoloca en otro punto cubierto más cercano al bloque.
 
 Se aplica a los comandos de siempre (reparar, reconstruir, asistir, minar), así que los menús, atajos y partidas guardadas no cambian. Respeta la postura "mantener posición".
 
@@ -82,7 +84,7 @@ Si una torreta no aparece dibujada, el mod no la ve como amenaza (sin munición,
 
 - Solo esquiva amenazas; no coordina qué unidad repara qué bloque.
 - El mega y el poly vuelan hasta el borde de la zona y esperan ahí: si hay combate constante cerca de un bloque dañado, no se repara hasta que termine.
-- Detrás de un muro el mega cura lo que alcanza, pero su proyectil curativo choca con el primer edificio propio que encuentra: cura sobre todo al propio muro y a lo pegado a él. El poly no tiene curación automática de bloques en el juego, así que solo espera sin reconstruir.
+- Detrás de un muro el mega y el poly curan lo que alcanzan, pero su proyectil curativo choca con el primer edificio propio que encuentra: curan sobre todo al propio muro y a lo pegado a él, no a través del muro. La habilidad de campo de reparación del poly solo cura unidades, no bloques; los bloques los cura con sus misiles, que el mod apunta a mano desde cobertura.
 - Una amenaza cuyo tipo de bala no se puede determinar se trata como que atraviesa muros (no hay cobertura).
 - La cobertura no se probó en una partida real: la geometría tiene pruebas, el comportamiento en el juego hay que verlo.
 - Los comandos (reparar, reconstruir, asistir, minar) son globales, pero la IA segura solo se asigna a mono, poly y mega. Cualquier otra unidad que use esos comandos (por ejemplo las de Erekir) conserva la IA original del juego.

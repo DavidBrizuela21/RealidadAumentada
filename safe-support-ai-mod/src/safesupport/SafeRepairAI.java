@@ -28,6 +28,10 @@ public class SafeRepairAI extends AIController{
     private boolean steering;
     /** Esta protegida por un muro: se queda quieta y solo cura lo que alcanza. */
     private boolean inCover;
+    /** Bloque danado dentro de una zona de peligro que se puede curar desde un punto cubierto; solo si no hay nada seguro que curar. */
+    private Building healAnchor;
+    /** Fraccion del alcance a la que se busca el punto cubierto (deja margen para que el proyectil llegue). */
+    static final float anchorReach = 0.8f;
 
     @Override
     public void updateMovement(){
@@ -43,12 +47,21 @@ public class SafeRepairAI extends AIController{
 
             if(guard.covered(unit)){
                 inCover = true;
-                holdInCover();
+
+                //nada que curar desde aqui: pasar a un punto cubierto mas cerca del bloque danado
+                if(!holdInCover()){
+                    Vec2 np = healCover();
+                    if(np != null && Mathf.dst(unit.x, unit.y, np.x, np.y) > 12f) rawMoveTo(np, waypointReach);
+                }
                 return;
             }
 
-            Vec2 cp = guard.coverPoint(unit);
-            Vec2 dest = cp != null && Mathf.dst(unit.x, unit.y, cp.x, cp.y) <= Mathf.dst(unit.x, unit.y, esc.x, esc.y) + SafetyGuard.coverDetour ? cp : esc;
+            //con un bloque danado que curar, el punto cubierto cercano a el; si no, el muro mas cercano
+            Vec2 dest = healCover();
+            if(dest == null){
+                Vec2 cp = guard.coverPoint(unit);
+                dest = cp != null && Mathf.dst(unit.x, unit.y, cp.x, cp.y) <= Mathf.dst(unit.x, unit.y, esc.x, esc.y) + SafetyGuard.coverDetour ? cp : esc;
+            }
 
             unit.controlWeapons(false);
             damagedTarget = null;
@@ -61,6 +74,26 @@ public class SafeRepairAI extends AIController{
         if(target instanceof Building tb && tb.team == unit.team && guard.dangerAt(tb.x, tb.y, 0f)){
             target = null;
             damagedTarget = null;
+        }
+
+        //nada seguro que curar, pero hay un bloque danado en una zona de peligro
+        if(!hold && !(target instanceof Building) && healAnchor != null && healAnchor.isValid() && unit.healthf() > 0.5f){
+            if(healAnchor.within(unit, unit.type.range * anchorReach)){
+                //lo alcanza desde fuera de la zona
+                retreatTimer = 0f;
+                unit.aim(healAnchor);
+                unit.lookAt(healAnchor);
+                unit.controlWeapons(true);
+                return;
+            }
+
+            Vec2 cp = guard.coverNear(unit, healAnchor.x, healAnchor.y, unit.type.range * anchorReach);
+            if(cp != null){
+                retreatTimer = 0f;
+                unit.controlWeapons(false);
+                rawMoveTo(cp, waypointReach);
+                return;
+            }
         }
 
         if(target instanceof Building){
@@ -114,9 +147,7 @@ public class SafeRepairAI extends AIController{
     public void updateTargeting(){
         guard.update(unit);
 
-        if(timer.get(timerTarget, 15)){
-            damagedTarget = inCover ? findDamagedInRange(unit.type.range * 0.9f) : findSafeDamaged();
-        }
+        if(timer.get(timerTarget, 15)) scanDamaged();
 
         if(damagedTarget != null && !damagedTarget.isValid()) damagedTarget = null;
 
@@ -127,56 +158,64 @@ public class SafeRepairAI extends AIController{
         }
     }
 
-    /** Protegida por un muro: no se mueve, apunta al bloque danado mas cercano que alcanza y lo cura. */
-    private void holdInCover(){
+    /** Punto cubierto cerca del bloque danado en zona de peligro, si esta a menos de coverSearch de la unidad (para no cruzar medio mapa bajo fuego). */
+    private @Nullable Vec2 healCover(){
+        if(healAnchor == null || !healAnchor.isValid()) return null;
+
+        Vec2 np = guard.coverNear(unit, healAnchor.x, healAnchor.y, unit.type.range * anchorReach);
+        return np != null && Mathf.dst(unit.x, unit.y, np.x, np.y) <= SafetyGuard.coverSearch ? np : null;
+    }
+
+    /**
+     * Protegida por un muro: no se mueve, apunta al bloque danado mas cercano que alcanza y lo cura.
+     * @return true si esta curando algo
+     */
+    private boolean holdInCover(){
         if(target instanceof Building b && b.team == unit.team && target.within(unit, unit.type.range)){
             unit.aim(target);
             unit.lookAt(target);
             unit.controlWeapons(true);
-        }else{
-            unit.controlWeapons(false);
+            return true;
         }
+
+        unit.controlWeapons(false);
+        return false;
     }
 
-    /** El bloque danado mas cercano dentro del alcance, aunque este en una zona de peligro (la unidad no se mueve). */
-    private @Nullable Building findDamagedInRange(float range){
+    /**
+     * Recorre los bloques danados una sola vez y decide:
+     * - objetivo normal: el mas cercano fuera de las zonas de peligro (o, cubierta, el mas cercano al alcance);
+     * - ancla: si no hay objetivo, el mas cercano dentro de una zona, para curarlo desde un punto cubierto.
+     */
+    private void scanDamaged(){
         var list = indexer.getDamaged(unit.team);
-        Building best = null;
-        float bestDst = range * range;
+        float reach = unit.type.range * 0.9f;
+        Building safe = null, inRange = null, danger = null;
+        float safeDst = Float.MAX_VALUE, rangeDst = reach * reach, dangerDst = Float.MAX_VALUE;
 
         for(int i = 0; i < list.size; i++){
             Building b = list.get(i);
             if(b == null || !b.isValid() || b instanceof ConstructBuild) continue;
 
             float dst = b.dst2(unit.x, unit.y);
-            if(dst >= bestDst) continue;
+            if(guard.dangerAt(b.x, b.y, 0f)){
+                if(dst < dangerDst){
+                    danger = b;
+                    dangerDst = dst;
+                }
+            }else if(dst < safeDst){
+                safe = b;
+                safeDst = dst;
+            }
 
-            best = b;
-            bestDst = dst;
+            if(dst < rangeDst){
+                inRange = b;
+                rangeDst = dst;
+            }
         }
 
-        return best;
-    }
-
-    /** El bloque danado mas cercano que no esta en una zona de peligro. */
-    private @Nullable Building findSafeDamaged(){
-        var list = indexer.getDamaged(unit.team);
-        Building best = null;
-        float bestDst = Float.MAX_VALUE;
-
-        for(int i = 0; i < list.size; i++){
-            Building b = list.get(i);
-            if(b == null || !b.isValid() || b instanceof ConstructBuild) continue;
-
-            float dst = b.dst2(unit.x, unit.y);
-            if(dst >= bestDst) continue;
-            if(guard.dangerAt(b.x, b.y, 0f)) continue;
-
-            best = b;
-            bestDst = dst;
-        }
-
-        return best;
+        damagedTarget = inCover ? inRange : safe;
+        healAnchor = damagedTarget == null ? danger : null;
     }
 
     /** Mueve a la unidad sin aplicar la esquiva (para huir o ir a un punto intermedio). */

@@ -1,8 +1,8 @@
 name: "safe-support-ai"
 displayName: "Safe Support AI"
 author: "David"
-description: "Mono, poly y mega esquivan enemigos y torretas enemigas, rodean las zonas de peligro y esperan a que pase la oleada antes de reparar o reconstruir. Poly y mega se cubren tras muros propios en vez de huir."
-version: 1.2
+description: "Mono, poly y mega esquivan enemigos y torretas enemigas, rodean las zonas de peligro y esperan a que pase la oleada antes de reparar o reconstruir. Poly y mega se cubren tras muros propios en vez de huir y curan desde ahí."
+version: 1.3
 minGameVersion: 156
 main: "safesupport.SafeSupportMod"
 java: true
