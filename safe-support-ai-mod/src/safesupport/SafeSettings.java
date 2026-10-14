@@ -42,7 +42,7 @@ public class SafeSettings{
             t.sliderPref("ss-coversearch", 10, 4, 20, 1, v -> v + tiles);
             t.sliderPref("ss-covergap", 15, 5, 40, 5, v -> Strings.fixed(v / 10f, 1) + tiles);
             t.sliderPref("ss-oresearch", 40, 10, 100, 5, v -> v + tiles);
-            t.sliderPref("ss-moveavoid", 2, 0, 2, 1, v -> v == 0 ? tr("Apagado", "Off") : v == 1 ? tr("Mono, poly y mega", "Mono, poly and mega") : tr("Todas las aéreas", "All air units"));
+            t.sliderPref("ss-moveavoid", 1, 0, 2, 1, v -> v == 0 ? tr("Apagado", "Off") : v == 1 ? tr("Mono, poly y mega", "Mono, poly and mega") : tr("Todas las aéreas", "All air units"));
             t.checkPref("ss-debug", false);
         });
     }

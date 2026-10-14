@@ -9,13 +9,13 @@ Mejora la IA de las unidades de soporte de Serpulo (mono, poly, mega).
 | Van a reparar/reconstruir aunque haya un enemigo o torreta enemiga al lado | Ignoran los bloques dañados y los planes de construcción que estén en una zona de peligro. Los retoman cuando se despeja |
 | Esperan a estar ociosas para huir | Si entran en una zona de peligro, salen de inmediato y sueltan el objetivo |
 | Atraviesan torretas enemigas al volar a minar o a reparar | Rodean las zonas de peligro en vez de cruzarlas |
-| Al ordenar **mover** a una unidad aérea cruzan una pared de torretas | Rodean toda la pared (varias zonas solapadas) por el lado libre y llegan al destino. Si el destino está dentro de una zona o la pared ocupa todo el mapa, esperan en el borde |
+| Al ordenar **mover** a un mono, poly o mega cruzan una pared de torretas | Rodean toda la pared (varias zonas solapadas) por el lado libre y llegan al destino. Si el destino está dentro de una zona o la pared ocupa todo el mapa, esperan en el borde |
 | El mono vuela a minar donde hay enemigos | Si la veta está en una zona de peligro, busca otra veta segura del mismo mineral (hasta 40 casillas del núcleo); si no hay ninguna, espera junto al núcleo. Al volver a soltar la carga también rodea |
 | Huir siempre aunque haya un muro que proteja | **Poly y mega** se cubren detrás de un muro propio (categoría muros: cobre, titanio, etc.) en vez de huir. El mega se queda quieto y cura lo que alcanza; el poly se queda quieto sin construir y apunta sus misiles curativos al bloque dañado más cercano |
 
 **Zona de peligro** = alcance de cada unidad enemiga que pueda disparar a la unidad (aérea o terrestre según el caso) + 4 casillas, y alcance de cada torreta enemiga con munición que pueda alcanzarla + 3 casillas.
 
-**Rodeo al mover.** El comando de mover no usa ninguna de las IAs de arriba (el juego mueve la unidad por su cuenta), así que el mod sustituye el `CommandAI` de las unidades aéreas por `SafeCommandAI`, idéntico salvo que, con la orden *mover* a una posición (no con ataques a un objetivo ni con patrulla), calcula una ruta alrededor de las zonas de peligro. La ruta se planifica sobre el conjunto de zonas (grafo de visibilidad con A\*), de modo que una pared de torretas se rodea entera. Una unidad que se mete en una zona por inercia sale primero y vuelve a planificar. Se configura en *Rodear amenazas al mover*: apagado, solo mono/poly/mega, o todas las unidades aéreas (por defecto).
+**Rodeo al mover.** El comando de mover no usa ninguna de las IAs de arriba (el juego mueve la unidad por su cuenta), así que el mod sustituye el `CommandAI` de las unidades aéreas por `SafeCommandAI`, idéntico salvo que, con la orden *mover* a una posición (no con ataques a un objetivo ni con patrulla), calcula una ruta alrededor de las zonas de peligro. La ruta se planifica sobre el conjunto de zonas (grafo de visibilidad con A\*), de modo que una pared de torretas se rodea entera. Una unidad que se mete en una zona por inercia sale primero y vuelve a planificar. Se configura en *Rodear amenazas al mover*: apagado, solo mono/poly/mega (por defecto), o todas las unidades aéreas.
 
 **Cobertura.** Una unidad dentro de una zona de peligro se considera cubierta si, desde *cada* amenaza que la alcanza, hay un muro propio en la línea de tiro (se comprueban tres líneas paralelas para cubrir el ancho de la unidad) y las balas de esa amenaza las frena un muro. No cuentan como cubierta las amenazas con láseres, rayos continuos, balas perforantes o metralla antiaérea (Scatter), que atraviesan muros. Si no hay cobertura, busca el muro más cercano (hasta 10 casillas) y se pone 1,5 casillas detrás; si no hay ninguno, huye como antes. Puertas y bloques que las balas sobrevuelan (cintas, puentes, conductos) no cuentan como muro.
 
@@ -63,7 +63,7 @@ En el juego: **Configuración → Safe Support AI**. Los cambios se aplican en u
 | Búsqueda de muros para cubrirse | 10 casillas | Hasta dónde busca un muro propio (poly y mega) |
 | Distancia detrás del muro | 1,5 casillas | Entre el borde del muro y la unidad (las balas que explotan hacen daño en área) |
 | Búsqueda de veta alternativa | 40 casillas | Hasta dónde busca el mono otra veta, desde el núcleo |
-| Rodear amenazas al mover | todas las aéreas | Apagado, solo mono/poly/mega, o todas las unidades aéreas |
+| Rodear amenazas al mover | mono, poly y mega | Apagado, solo mono/poly/mega, o todas las unidades aéreas |
 | Mostrar zonas de peligro | apagado | Modo diagnóstico (abajo) |
 
 Las constantes `scanInterval`, `coverInterval`, `coverChecks`, `coverSpread` y `coverDetour` siguen en `SafetyGuard.java`.
@@ -93,7 +93,7 @@ Si una torreta no aparece dibujada, el mod no la ve como amenaza (sin munición,
 - Detrás de un muro el mega y el poly curan lo que alcanzan, pero su proyectil curativo choca con el primer edificio propio que encuentra: curan sobre todo al propio muro y a lo pegado a él, no a través del muro. La habilidad de campo de reparación del poly solo cura unidades, no bloques; los bloques los cura con sus misiles, que el mod apunta a mano desde cobertura.
 - Una amenaza cuyo tipo de bala no se puede determinar se trata como que atraviesa muros (no hay cobertura).
 - La cobertura no se probó en una partida real: la geometría tiene pruebas, el comportamiento en el juego hay que verlo.
-- Si ordenas mover una unidad aérea *dentro* de una zona de peligro, espera en el borde y la orden no termina (usa *Rodear amenazas al mover* en apagado, o ataca a un objetivo, para entrar a propósito).
-- El rodeo al mover solo cubre unidades aéreas; las terrestres usan el buscador de rutas del juego.
+- Si ordenas mover una unidad *dentro* de una zona de peligro, espera en el borde y la orden no termina (usa *Rodear amenazas al mover* en apagado, o ataca a un objetivo, para entrar a propósito).
+- El rodeo al mover cubre por defecto solo mono, poly y mega (se puede ampliar a todas las aéreas en Configuración); las terrestres usan el buscador de rutas del juego.
 - Los comandos (reparar, reconstruir, asistir, minar) son globales, pero la IA segura solo se asigna a mono, poly y mega. Cualquier otra unidad que use esos comandos (por ejemplo las de Erekir) conserva la IA original del juego.
 - Escrito contra el código fuente actual del juego (v8, build 15x/16x). Una actualización con cambios en `UnitCommand` o `AIController` puede requerir ajustes.
