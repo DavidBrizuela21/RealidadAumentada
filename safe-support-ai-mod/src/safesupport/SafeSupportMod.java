@@ -5,11 +5,13 @@ import arc.func.*;
 import arc.util.*;
 import mindustry.ai.*;
 import mindustry.ai.types.*;
+import mindustry.*;
 import mindustry.content.*;
 import mindustry.entities.units.*;
 import mindustry.game.*;
 import mindustry.gen.*;
 import mindustry.mod.*;
+import mindustry.type.*;
 
 import java.lang.reflect.*;
 
@@ -59,8 +61,29 @@ public class SafeSupportMod extends Mod{
             }) &
             setController(UnitCommand.mineCommand, u -> supported(u) ? new SafeMinerAI() : new MinerAI());
 
+        wrapCommandControllers();
+
         patched = true;
         Log.info("[Safe Support AI] " + (ok ? "IA de soporte segura activada." : "algunos comandos no se pudieron reemplazar, revisa el log."));
+    }
+
+    /**
+     * Las unidades aereas controladas con ordenes usan un CommandAI creado por su tipo (tambien al cargar partidas):
+     * se sustituye por SafeCommandAI, que es igual pero rodea las amenazas al mover.
+     */
+    private static void wrapCommandControllers(){
+        int count = 0;
+        for(UnitType type : Vars.content.units()){
+            if(!type.flying) continue;
+
+            var original = type.controller;
+            type.controller = u -> {
+                UnitController c = original.get(u);
+                return c != null && c.getClass() == CommandAI.class ? new SafeCommandAI() : c;
+            };
+            count++;
+        }
+        Log.info("[Safe Support AI] rodeo al mover disponible para @ tipos de unidades aereas.", count);
     }
 
     /** Solo mono, poly y mega usan la IA segura; el resto de unidades (por ejemplo las de Erekir) conservan la del juego. */

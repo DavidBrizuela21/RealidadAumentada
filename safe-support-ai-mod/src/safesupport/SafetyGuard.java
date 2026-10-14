@@ -55,6 +55,8 @@ public class SafetyGuard{
     public static float oreSearch = 40f * tilesize;
     /** Muestra las zonas y la cobertura sobre el mapa. */
     public static boolean debug;
+    /** Rodeo al mover: 0 apagado, 1 solo mono/poly/mega, 2 todas las unidades aereas. */
+    public static int moveAvoid = 2;
 
     private static final int maxCandidates = 256;
     private static final int maxDebugGuards = 8;
@@ -97,6 +99,7 @@ public class SafetyGuard{
         }
 
         zones.clear();
+        zones.setBounds(world.unitWidth(), world.unitHeight());
         threats.clear();
         final boolean air = unit.isFlying();
 
@@ -306,6 +309,7 @@ public class SafetyGuard{
         coverGap = s.getInt("ss-covergap", 15) / 10f * tilesize;
         oreSearch = s.getInt("ss-oresearch", 40) * tilesize;
         debug = s.getBool("ss-debug", false);
+        moveAvoid = s.getInt("ss-moveavoid", 2);
     }
 
     /**

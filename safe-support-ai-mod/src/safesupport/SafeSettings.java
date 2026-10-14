@@ -27,6 +27,8 @@ public class SafeSettings{
             tr("Distancia entre el borde del muro y la unidad. Las balas que explotan al chocar hacen daño en área.", "Distance between the wall edge and the unit. Bullets that explode on impact deal area damage."));
         title("ss-oresearch", tr("Búsqueda de veta alternativa (mono)", "Alternative ore search (mono)"),
             tr("Hasta dónde busca el mono otra veta segura, medido desde el núcleo.", "How far the mono looks for another safe ore, measured from the core."));
+        title("ss-moveavoid", tr("Rodear amenazas al mover", "Avoid threats when moving"),
+            tr("Al ordenar mover una unidad aérea, rodea las zonas de peligro. Si el destino está dentro de una zona espera en el borde.", "When ordering an air unit to move, it goes around danger zones. If the destination is inside a zone it waits at the edge."));
         title("ss-debug", tr("Mostrar zonas de peligro", "Show danger zones"),
             tr("Dibuja las zonas sobre el mapa (de las unidades seleccionadas). Naranja: un muro frena a la amenaza. Rojo: atraviesa muros. Anillo verde: unidad cubierta. Anillo rojo: expuesta. Punto y línea verdes: muro elegido.",
                "Draws the zones on the map (for selected units). Orange: a wall stops the threat. Red: it passes walls. Green ring: unit covered. Red ring: exposed. Green dot and line: chosen wall."));
@@ -40,6 +42,7 @@ public class SafeSettings{
             t.sliderPref("ss-coversearch", 10, 4, 20, 1, v -> v + tiles);
             t.sliderPref("ss-covergap", 15, 5, 40, 5, v -> Strings.fixed(v / 10f, 1) + tiles);
             t.sliderPref("ss-oresearch", 40, 10, 100, 5, v -> v + tiles);
+            t.sliderPref("ss-moveavoid", 2, 0, 2, 1, v -> v == 0 ? tr("Apagado", "Off") : v == 1 ? tr("Mono, poly y mega", "Mono, poly and mega") : tr("Todas las aéreas", "All air units"));
             t.checkPref("ss-debug", false);
         });
     }
